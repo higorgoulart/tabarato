@@ -3,6 +3,7 @@ import axios from 'axios';
 import debounce from 'lodash.debounce';
 import { useCart, generateKey, Variation } from '../context/CartContext';
 import { useNavigate } from 'react-router-dom';
+import ProductCard from '../utils/ProductCard';
 
 interface Product {
     id: string;
@@ -14,7 +15,7 @@ interface Product {
 export default function Home() {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<Product[]>([]);
-    const [showStores, setShowStores] = useState(false);
+    const [bertResults, setBertResults] = useState<Product[]>([]);
     const [secretCount, setSecretCount] = useState(0);
     const { cart, addToCart, updateQuantity, removeFromCart } = useCart();
     const [isCartOpen, setIsCartOpen] = useState(false);
@@ -28,7 +29,6 @@ export default function Home() {
         { label: 'Motocicleta', value: 'TWO_WHEELER' },
         { label: 'Caminhando', value: 'WALK' },
     ];
-
 
     const navigate = useNavigate();
 
@@ -55,30 +55,52 @@ export default function Home() {
     const search = async (searchText: string) => {
         if (!searchText.trim()) {
             setResults([]);
+            setBertResults([]);
             return;
         }
 
         try {
-            const response = await axios.post('http://localhost:9200/products/_search', {
-                query: {
-                    bool: {
-                        must: {
-                            multi_match: {
-                                query: searchText,
-                                type: 'most_fields',
-                                fields: ['name^3', 'brand'],
+            const [productsRes, bertRes] = await Promise.all([
+                axios.post('http://localhost:9200/products/_search', {
+                    query: {
+                        bool: {
+                            must: {
+                                multi_match: {
+                                    query: searchText,
+                                    type: 'most_fields',
+                                    fields: ['name^3', 'brand'],
+                                },
                             },
                         },
                     },
-                },
-            });
+                }),
+                axios.post('http://localhost:9200/bert-products/_search', {
+                    query: {
+                        bool: {
+                            must: {
+                                multi_match: {
+                                    query: searchText,
+                                    type: 'most_fields',
+                                    fields: ['name^3', 'brand'],
+                                },
+                            },
+                        },
+                    },
+                }),
+            ]);
 
-            const hits = response.data.hits.hits;
-            const products: Product[] = hits.map((hit: any) => ({
+            const products: Product[] = productsRes.data.hits.hits.map((hit: any) => ({
                 id: hit._id,
                 ...hit._source,
             }));
+
+            const bertProducts: Product[] = bertRes.data.hits.hits.map((hit: any) => ({
+                id: hit._id,
+                ...hit._source,
+            }));
+
             setResults(products);
+            setBertResults(bertProducts);
         } catch (error) {
             console.error('Erro ao buscar:', error);
         }
@@ -144,67 +166,20 @@ export default function Home() {
                     </div>
                 )}
 
-                <div className="grid gap-6">
-                    {results.map((product) => (
-                        <div
-                            key={product.id}
-                            className="card bg-white shadow-lg rounded-2xl mb-6 p-4"
-                        >
-                            <div>
-                                <h2 className="card-title text-xl font-bold text-gray-900">{product.name}</h2>
-                                <p className="text-sm text-gray-600 mb-3">Marca: {product.brand}</p>
-                            </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h3 className="text-lg font-bold mb-2">Sentence-BERT</h3>
+                        {results.map((product) => (
+                            <ProductCard key={`products-${product.id}`} product={product} />
+                        ))}
+                    </div>
 
-                            {product.variations.map((variation, idx) => {
-                                const priceDisplay =
-                                    variation.min_price === variation.max_price
-                                        ? `R$${variation.min_price.toFixed(2)}`
-                                        : `R$${variation.min_price.toFixed(2)} - R$${variation.max_price.toFixed(2)}`;
-
-                                return (
-                                    <div
-                                        key={idx}
-                                        className="mt-4 pt-4 border-t border-gray-300 flex gap-4"
-                                    >
-                                        {variation.image_url && (
-                                            <img
-                                                src={variation.image_url}
-                                                alt={variation.name}
-                                                className="w-24 h-24 object-contain rounded-xl"
-                                            />
-                                        )}
-                                        <div className="flex-1">
-                                            <p className="text-base font-medium text-gray-900">{variation.name}</p>
-                                            <p className="text-sm text-gray-700">
-                                                {variation.weight} {variation.measure}
-                                            </p>
-                                            <p className="text-base font-bold mt-1 text-gray-900">{priceDisplay}</p>
-
-                                            {showStores && (
-                                                <div className="flex overflow-x-auto gap-2 mt-3">
-                                                    {variation.stores.map((store, idx) => (
-                                                        <div
-                                                            key={idx}
-                                                            className="bg-blue-50 text-blue-700 text-sm font-semibold px-3 py-1 rounded-full whitespace-nowrap"
-                                                        >
-                                                            🏬 {store}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-
-                                            <button
-                                                onClick={() => addToCart(variation)}
-                                                className="mt-3 btn btn-sm btn-outline btn-primary"
-                                            >
-                                                Adicionar ao carrinho
-                                            </button>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    ))}
+                    <div>
+                        <h3 className="text-lg font-bold mb-2">BERT</h3>
+                        {bertResults.map((product) => (
+                            <ProductCard key={`bert-${product.id}`} product={product} />
+                        ))}
+                    </div>
 
                     {results.length === 0 && query && (
                         <div className="text-center text-gray-400">Nenhum produto encontrado.</div>

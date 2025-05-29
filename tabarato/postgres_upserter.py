@@ -197,7 +197,6 @@ class PostgresUpserter:
                 best_id = bid
 
         if best_score >= threshold:
-            print(f"{brand} | matched with | {best_id} | score: {best_score:.2f}")
             return best_id
 
         return None
@@ -208,11 +207,11 @@ class PostgresUpserter:
             """
             SELECT id, 1 - (embedded_name <=> %s::vector) AS similarity
             FROM product_family
-            WHERE id_brand = %s and name like %s
+            WHERE id_brand = %s
             ORDER BY embedded_name <=> %s::vector
             LIMIT 1
             """,
-            (cls._to_vector(embedded_vector), id_brand, f"{get_words(name)[0]}%", cls._to_vector(embedded_vector))
+            (cls._to_vector(embedded_vector), id_brand, cls._to_vector(embedded_vector))
         )
         result = cursor.fetchone()
         if result and result[1] >= similarity_threshold:
